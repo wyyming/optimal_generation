@@ -12,8 +12,8 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForMaskedLM.from_pretrained(model_id)
 
 # %%
-# expected_text="The quick brown fox jumps over the lazy dog today"
-expected_text="Bright sunlight reflects softly across calm ocean waves"
+expected_text="The quick brown fox jumps over the lazy dog today"
+# expected_text="Bright sunlight reflects softly across calm ocean waves"
 targets = tokenizer(expected_text, return_tensors="pt").input_ids
 targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
 tokens=tokenizer.convert_ids_to_tokens(targets_main)
@@ -51,42 +51,21 @@ for i in range(num_blocks):
     else:
       text_list.append(tokenizer.mask_token)
   revealed_text=" ".join(text_list)
-  print(revealed_text)
+  inputs=tokenizer(revealed_text, return_tensors="pt")
+  outputs=model(**inputs, labels=targets)
+  logits_main=outputs.logits[0][1:-1][:]
+  targets_main=targets[0][1:-1]
+  per_nll=torch.nn.functional.cross_entropy(logits_main,targets_main,reduction='none')
+  remainder = len(tokens) % block_size
+  if remainder != 0:
+    pad_size = block_size - remainder
+    per_nll = torch.cat([per_nll, torch.zeros(pad_size, device=per_nll.device)])
+  blk_logprob = -per_nll.view(num_blocks, block_size).sum(dim=1)
+  for j,lp in enumerate(blk_logprob):
+    if j!=i:
+      G.add_edge(i,j,weight=lp.item())
 
 # %%
-for i in range(len(blocks)):
-  # unmask one block at a time
-  text = ["[MASK]"]*(i*2)
-  for ind in blocks[i]:
-    text.append(words[ind-1])
-  text.extend(["[MASK]"]*((len(blocks)-i-1)*2))
-  text=" ".join(text)
-  inputs = tokenizer(text, return_tensors="pt")
-  outputs = model(**inputs, labels=targets)
-  ces=[]
-  for j in range(1,len(inputs.input_ids[0])-1):
-    # skip unmasked blocks
-    if tokenizer.decode(inputs.input_ids[0][j])=="[MASK]":
-      cross_entropy=torch.nn.functional.cross_entropy(outputs.logits[0][j], targets[0][j], reduction='none')
-      ces.append(cross_entropy)
-    else:
-      ces.append(None)
-  blk_prob=[]
-  for j in range(len(blocks)):
-    if ces[j*2]!=None:
-      blk_prob.append(-ces[j*2]-ces[j*2+1])
-    else:
-      blk_prob.append(None)
-  unmasked_blk_prob.append(blk_prob)
-print(unmasked_blk_prob)
-
-# %%
-for i,blk in enumerate(unmasked_blk_prob):
-  for j,p in enumerate(blk):
-    if p!=None:
-    #   G.add_edge(i,j,weight=float(f"{p.item():.4f}"))
-      G.add_edge(i,j,weight=p.item())
-
 pos = nx.circular_layout(G)
 nx.draw(G,pos,with_labels=True,connectionstyle="arc3,rad=0.2")
 edge_labels = nx.get_edge_attributes(G, "weight")
@@ -98,13 +77,7 @@ nx.draw(mst,pos,with_labels=True)
 edge_labels=nx.get_edge_attributes(mst,"weight")
 nx.draw_networkx_edge_labels(mst,pos,edge_labels=edge_labels,label_pos=0.4)
 plt.show()
-# %%
-order = list(nx.dfs_preorder_nodes(mst, source=-1))
-print(order)
-print(edge_labels)
 sum_of_edge=sum(edge_labels.values())
-print(math.exp(sum_of_edge))
-# 7.038466780220017e-12
 
 # 0:The quick 1:brown fox 2:jumps over 3:the lazy 4:dog today
 
