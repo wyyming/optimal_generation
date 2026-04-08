@@ -12,74 +12,98 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForMaskedLM.from_pretrained(model_id)
 
 # %%
-expected_text="The quick brown fox jumps over the lazy dog today"
-# expected_text="Bright sunlight reflects softly across calm ocean waves"
-targets = tokenizer(expected_text, return_tensors="pt").input_ids
-targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
-tokens=tokenizer.convert_ids_to_tokens(targets_main)
-# ['B', 'right', 'Ġsunlight', 'Ġreflects', 'Ġsoftly', 'Ġacross', 'Ġcalm', 'Ġocean', 'Ġwaves', 'Ġat', 'Ġdawn']
-
-block_size=2
-blocks=[list(range(i, min(i+block_size, len(tokens)))) for i in range(0, len(tokens), block_size)]
-num_blocks=len(blocks)
+from datasets import load_dataset
+ds = load_dataset("roneneldan/TinyStories")
 
 # %%
-# fully masked text
-text=" ".join([tokenizer.mask_token]*len(tokens))
-inputs = tokenizer(text, return_tensors="pt")
-outputs = model(**inputs, labels=targets)
-logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
-# compute cross entropy for all tokens at once
-nll=torch.nn.functional.cross_entropy(logits_main, targets_main,reduction='none')
-# transform [num of tokens] to [num of blocks, block size] then sum across columns
-remainder = len(tokens) % block_size
-if remainder != 0:
-    pad_size = block_size - remainder
-    nll = torch.cat([nll, torch.zeros(pad_size, device=nll.device)])
-blk_logprob = -nll.view(num_blocks, block_size).sum(dim=1)
-G=nx.DiGraph()
-G.add_node(-1)
-for i,lp in enumerate(blk_logprob):
-  G.add_edge(-1,i,weight=lp.item())
+def compute_blk_logprob(text,targets,targets_main,num_tokens,blk_sz,num_blocks):
+    inputs = tokenizer(text, return_tensors="pt")
+    outputs = model(**inputs, labels=targets)
+    logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
+    # compute cross entropy for all tokens at once
+    nll=torch.nn.functional.cross_entropy(logits_main, targets_main,reduction='none')
+    # transform [num of tokens] to [num of blocks, block size] then sum across columns
+    remainder = num_tokens % blk_sz
+    if remainder != 0:
+        pad_size = blk_sz - remainder
+        nll = torch.cat([nll, torch.zeros(pad_size, device=nll.device)])
+    blk_logprob = -nll.view(num_blocks, blk_sz).sum(dim=1)
+    return blk_logprob
 
 # %%
-for i in range(num_blocks):
-  text_list=[]
-  for j in range(len(tokens)):
-    if block_size*i<=j<block_size*(i+1):
-      text_list.append(tokens[j].replace("Ġ", ""))
-    else:
-      text_list.append(tokenizer.mask_token)
-  revealed_text=" ".join(text_list)
-  inputs=tokenizer(revealed_text, return_tensors="pt")
-  outputs=model(**inputs, labels=targets)
-  logits_main=outputs.logits[0][1:-1][:]
-  targets_main=targets[0][1:-1]
-  per_nll=torch.nn.functional.cross_entropy(logits_main,targets_main,reduction='none')
-  remainder = len(tokens) % block_size
-  if remainder != 0:
-    pad_size = block_size - remainder
-    per_nll = torch.cat([per_nll, torch.zeros(pad_size, device=per_nll.device)])
-  blk_logprob = -per_nll.view(num_blocks, block_size).sum(dim=1)
-  for j,lp in enumerate(blk_logprob):
-    if j!=i:
-      G.add_edge(i,j,weight=lp.item())
+def find_optimal_gen_order(expected_text,blk_sz=2):
+    targets = tokenizer(expected_text, return_tensors="pt").input_ids
+    targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
+    tokens=tokenizer.convert_ids_to_tokens(targets_main)
+    num_tokens=len(tokens)
 
-# %%
-pos = nx.circular_layout(G)
-nx.draw(G,pos,with_labels=True,connectionstyle="arc3,rad=0.2")
-edge_labels = nx.get_edge_attributes(G, "weight")
-nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels,connectionstyle="arc3,rad=0.2")
-plt.show()
-# %%
-mst=nx.maximum_spanning_arborescence(G)
-nx.draw(mst,pos,with_labels=True)
-edge_labels=nx.get_edge_attributes(mst,"weight")
-nx.draw_networkx_edge_labels(mst,pos,edge_labels=edge_labels,label_pos=0.4)
-plt.show()
-sum_of_edge=sum(edge_labels.values())
+    blocks=[list(range(i, min(i+blk_sz, len(tokens)))) for i in range(0, len(tokens), blk_sz)]
+    num_blocks=len(blocks)
 
+    def compute_blk_logprob(text):
+        inputs = tokenizer(text, return_tensors="pt")
+        outputs = model(**inputs, labels=targets)
+        logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
+        # compute cross entropy for all tokens at once
+        nll=torch.nn.functional.cross_entropy(logits_main, targets_main,reduction='none')
+        # transform [num of tokens] to [num of blocks, block size] then sum across columns
+        remainder = num_tokens % blk_sz
+        if remainder != 0:
+            pad_size = blk_sz - remainder
+            nll = torch.cat([nll, torch.zeros(pad_size, device=nll.device)])
+        blk_logprob = -nll.view(num_blocks, blk_sz).sum(dim=1)
+        return blk_logprob
+
+    # fully masked text
+    text=" ".join([tokenizer.mask_token]*num_tokens)
+    blk_logprob=compute_blk_logprob(text)
+    G=nx.DiGraph()
+    G.add_node(-1)
+    for i,lp in enumerate(blk_logprob):
+        G.add_edge(-1,i,weight=lp.item())
+
+    # reveal one block at a time
+    for i in range(num_blocks):
+        text_list=[]
+        for j in range(len(tokens)):
+            if blk_sz*i<=j<blk_sz*(i+1):
+                text_list.append(tokens[j].replace("Ġ", ""))
+            else:
+                text_list.append(tokenizer.mask_token)
+        revealed_text=" ".join(text_list)
+        blk_logprob=compute_blk_logprob(revealed_text)
+        for j,lp in enumerate(blk_logprob):
+            if j!=i:
+                G.add_edge(i,j,weight=lp.item())
+
+    # find max spanning arborescence
+    pos = nx.circular_layout(G)
+    mst=nx.maximum_spanning_arborescence(G)
+    nx.draw(mst,pos,with_labels=True)
+    edge_labels=nx.get_edge_attributes(mst,"weight")
+    nx.draw_networkx_edge_labels(mst,pos,edge_labels=edge_labels,label_pos=0.4)
+    plt.show()
+    sum_of_edge=sum(edge_labels.values())
 # 0:The quick 1:brown fox 2:jumps over 3:the lazy 4:dog today
+
+# %%
+text=ds["train"][0]["text"]
+print('original: ',text)
+targets=tokenizer(text, return_tensors="pt").input_ids
+targets_main=targets[0][1:-1]
+tokens=tokenizer.convert_ids_to_tokens(targets_main)
+text_list=[]
+for j in range(len(tokens)):
+    text_list.append(tokens[j].replace("Ġ", ""))
+revealed_text=" ".join(text_list)
+print('reconstructed: ',revealed_text)
+
+
+# %%
+subset=ds["train"].select(range(10))
+for t in subset:
+    # print(t["text"])
+    find_optimal_gen_order(t["text"])
 
 # %%
 # verify probability of this generation order
