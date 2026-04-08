@@ -12,46 +12,48 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForMaskedLM.from_pretrained(model_id)
 
 # %%
-expected_text="The capital of France is Paris"
-words=expected_text.split()
-print(words)
-text="[MASK] [MASK] [MASK] [MASK] [MASK] [MASK]"
-
-inputs = tokenizer(text, return_tensors="pt")
+# expected_text="The quick brown fox jumps over the lazy dog today"
+expected_text="Bright sunlight reflects softly across calm ocean waves"
 targets = tokenizer(expected_text, return_tensors="pt").input_ids
+targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
+tokens=tokenizer.convert_ids_to_tokens(targets_main)
+# ['B', 'right', 'Ġsunlight', 'Ġreflects', 'Ġsoftly', 'Ġacross', 'Ġcalm', 'Ġocean', 'Ġwaves', 'Ġat', 'Ġdawn']
+
+block_size=2
+blocks=[list(range(i, min(i+block_size, len(tokens)))) for i in range(0, len(tokens), block_size)]
+num_blocks=len(blocks)
+
+# %%
+# fully masked text
+text=" ".join([tokenizer.mask_token]*len(tokens))
+inputs = tokenizer(text, return_tensors="pt")
 outputs = model(**inputs, labels=targets)
-
-print(outputs)
-print(targets)
-
-# %%
-blocks = [[1,2],[3,4],[5,6]]
-ces=[]
-for i in range(len(inputs.input_ids[0])):
-  # compute cross entropy for each token position given the expected token ids
-  cross_entropy=torch.nn.functional.cross_entropy(outputs.logits[0][i], targets[0][i], reduction='none')
-  ces.append(cross_entropy)
-# compute cross entropy per block
-blk_prob=[]
-for blk in blocks:
-  blk_nll=0
-  for ids in blk:
-    blk_nll-=ces[ids]
-  blk_prob.append(blk_nll)
-
-print(blk_prob)
-
-
-# %%
+logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
+# compute cross entropy for all tokens at once
+nll=torch.nn.functional.cross_entropy(logits_main, targets_main,reduction='none')
+# transform [num of tokens] to [num of blocks, block size] then sum across columns
+remainder = len(tokens) % block_size
+if remainder != 0:
+    pad_size = block_size - remainder
+    nll = torch.cat([nll, torch.zeros(pad_size, device=nll.device)])
+blk_logprob = -nll.view(num_blocks, block_size).sum(dim=1)
 G=nx.DiGraph()
 G.add_node(-1)
-for i,p in enumerate(blk_prob):
-#   G.add_edge(-1,i,weight=float(f"{p.item():.4f}"))
-  G.add_edge(-1,i,weight=p.item())
-
+for i,lp in enumerate(blk_logprob):
+  G.add_edge(-1,i,weight=lp.item())
 
 # %%
-unmasked_blk_prob=[]
+for i in range(num_blocks):
+  text_list=[]
+  for j in range(len(tokens)):
+    if block_size*i<=j<block_size*(i+1):
+      text_list.append(tokens[j].replace("Ġ", ""))
+    else:
+      text_list.append(tokenizer.mask_token)
+  revealed_text=" ".join(text_list)
+  print(revealed_text)
+
+# %%
 for i in range(len(blocks)):
   # unmask one block at a time
   text = ["[MASK]"]*(i*2)
@@ -104,10 +106,13 @@ sum_of_edge=sum(edge_labels.values())
 print(math.exp(sum_of_edge))
 # 7.038466780220017e-12
 
+# 0:The quick 1:brown fox 2:jumps over 3:the lazy 4:dog today
+
 # %%
 # verify probability of this generation order
+# TODO: update order so that generation order is correct
 total_prob=1
-text="[MASK] [MASK] [MASK] [MASK] [MASK] [MASK]"
+text="[MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK]"
 inputs = tokenizer(text, return_tensors="pt")
 targets = tokenizer(expected_text, return_tensors="pt").input_ids
 outputs = model(**inputs, labels=targets)
@@ -118,7 +123,7 @@ for ids in initial_ids:
 
 for i in range(1,len(order)-1):
   ids=blocks[order[i]] # [3,4],[1,2]
-  masked_words=["[MASK]"]*4
+  masked_words=["[MASK]"]*8
   for j in ids:
     masked_words.insert(j-1,words[j-1])
   text=" ".join(masked_words)
