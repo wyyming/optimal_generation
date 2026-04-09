@@ -40,7 +40,6 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     num_blocks=len(blocks)
 
     def compute_blk_logprob(input_ids):
-        # inputs = tokenizer(text, return_tensors="pt")
         outputs = model(input_ids=input_ids, labels=targets)
         logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
         # compute cross entropy for all tokens at once
@@ -76,30 +75,28 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     # find max spanning arborescence
     pos = nx.circular_layout(G)
     mst=nx.maximum_spanning_arborescence(G)
-    nx.draw(mst,pos,with_labels=True)
+    # label node with words
+    mst.nodes[-1]['label']="start"
+    for i,blk in enumerate(blocks):
+        words=[tokenizer.decode(targets_main[pos]) for pos in blk]
+        mst.nodes[i]['label']=" ".join(words)
+    node_labels=nx.get_node_attributes(mst,"label")
+    nx.draw(mst,pos,with_labels=True,labels=node_labels)
     edge_labels=nx.get_edge_attributes(mst,"weight")
     nx.draw_networkx_edge_labels(mst,pos,edge_labels=edge_labels,label_pos=0.4)
     plt.show()
-    sum_of_edge=sum(edge_labels.values())
+    depths = nx.single_source_shortest_path_length(mst, source=-1)
+    max_depth = max(depths.values())
+    print("depth of tree: ", max_depth)
+    order=list(nx.lexicographical_topological_sort(mst))
+    print("generation order: ", order)
 # 0:The quick 1:brown fox 2:jumps over 3:the lazy 4:dog today
 
 # %%
-text=ds["train"][0]["text"]
-# text="The quick brown fox jumps over the lazy dog today"
+# text=ds["train"][0]["text"]
+# depth of 24
+text="The quick brown fox jumps over the lazy dog today"
 find_optimal_gen_order(text)
-
-# %%
-text=ds["train"][0]["text"]
-print('original: ',text)
-targets=tokenizer(text, return_tensors="pt").input_ids
-targets_main=targets[0][1:-1]
-tokens=tokenizer.convert_ids_to_tokens(targets_main)
-text_list=[]
-for j in range(len(tokens)):
-    text_list.append(tokens[j].replace("Ġ", ""))
-revealed_text=" ".join(text_list)
-print('reconstructed: ',revealed_text)
-
 
 # %%
 subset=ds["train"].select(range(10))
