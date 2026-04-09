@@ -16,21 +16,6 @@ from datasets import load_dataset
 ds = load_dataset("roneneldan/TinyStories")
 
 # %%
-def compute_blk_logprob(text,targets,targets_main,num_tokens,blk_sz,num_blocks):
-    inputs = tokenizer(text, return_tensors="pt")
-    outputs = model(**inputs, labels=targets)
-    logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
-    # compute cross entropy for all tokens at once
-    nll=torch.nn.functional.cross_entropy(logits_main, targets_main,reduction='none')
-    # transform [num of tokens] to [num of blocks, block size] then sum across columns
-    remainder = num_tokens % blk_sz
-    if remainder != 0:
-        pad_size = blk_sz - remainder
-        nll = torch.cat([nll, torch.zeros(pad_size, device=nll.device)])
-    blk_logprob = -nll.view(num_blocks, blk_sz).sum(dim=1)
-    return blk_logprob
-
-# %%
 def find_optimal_gen_order(expected_text,blk_sz=2):
     targets = tokenizer(expected_text, return_tensors="pt").input_ids
     targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
@@ -94,7 +79,6 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
 
 # %%
 # text=ds["train"][0]["text"]
-# depth of 24
 text="The quick brown fox jumps over the lazy dog today"
 find_optimal_gen_order(text)
 
