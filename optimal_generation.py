@@ -34,15 +34,14 @@ def compute_blk_logprob(text,targets,targets_main,num_tokens,blk_sz,num_blocks):
 def find_optimal_gen_order(expected_text,blk_sz=2):
     targets = tokenizer(expected_text, return_tensors="pt").input_ids
     targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
-    tokens=tokenizer.convert_ids_to_tokens(targets_main)
-    num_tokens=len(tokens)
+    num_tokens=targets_main.shape[0]
 
-    blocks=[list(range(i, min(i+blk_sz, len(tokens)))) for i in range(0, len(tokens), blk_sz)]
+    blocks=[list(range(i, min(i+blk_sz, num_tokens))) for i in range(0, num_tokens, blk_sz)]
     num_blocks=len(blocks)
 
-    def compute_blk_logprob(text):
-        inputs = tokenizer(text, return_tensors="pt")
-        outputs = model(**inputs, labels=targets)
+    def compute_blk_logprob(input_ids):
+        # inputs = tokenizer(text, return_tensors="pt")
+        outputs = model(input_ids=input_ids, labels=targets)
         logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
         # compute cross entropy for all tokens at once
         nll=torch.nn.functional.cross_entropy(logits_main, targets_main,reduction='none')
@@ -55,8 +54,9 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
         return blk_logprob
 
     # fully masked text
-    text=" ".join([tokenizer.mask_token]*num_tokens)
-    blk_logprob=compute_blk_logprob(text)
+    masked_input_ids = targets.clone()
+    masked_input_ids[0, 1:-1] = tokenizer.mask_token_id
+    blk_logprob=compute_blk_logprob(masked_input_ids)
     G=nx.DiGraph()
     G.add_node(-1)
     for i,lp in enumerate(blk_logprob):
@@ -64,14 +64,11 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
 
     # reveal one block at a time
     for i in range(num_blocks):
-        text_list=[]
-        for j in range(len(tokens)):
-            if blk_sz*i<=j<blk_sz*(i+1):
-                text_list.append(tokens[j].replace("Ġ", ""))
-            else:
-                text_list.append(tokenizer.mask_token)
-        revealed_text=" ".join(text_list)
-        blk_logprob=compute_blk_logprob(revealed_text)
+        revealed_input_ids = targets.clone()
+        revealed_input_ids[0, 1:-1] = tokenizer.mask_token_id
+        for pos in blocks[i]:
+            revealed_input_ids[0, pos + 1] = targets[0, pos + 1]
+        blk_logprob=compute_blk_logprob(revealed_input_ids)
         for j,lp in enumerate(blk_logprob):
             if j!=i:
                 G.add_edge(i,j,weight=lp.item())
@@ -85,6 +82,11 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     plt.show()
     sum_of_edge=sum(edge_labels.values())
 # 0:The quick 1:brown fox 2:jumps over 3:the lazy 4:dog today
+
+# %%
+text=ds["train"][0]["text"]
+# text="The quick brown fox jumps over the lazy dog today"
+find_optimal_gen_order(text)
 
 # %%
 text=ds["train"][0]["text"]
