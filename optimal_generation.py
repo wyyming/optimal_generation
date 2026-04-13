@@ -59,8 +59,8 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
                 G.add_edge(i,j,weight=lp.item())
 
     # find max spanning arborescence
-    pos=nx.circular_layout(G)
     mst=nx.maximum_spanning_arborescence(G)
+    pos=nx.bfs_layout(mst,start=-1)
     # label node with words
     mst.nodes[-1]['label']="start"
     for i,blk in enumerate(blocks):
@@ -72,7 +72,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     edge_labels=nx.get_edge_attributes(mst,"weight")
     nx.draw_networkx_edge_labels(mst,pos,edge_labels=edge_labels,label_pos=0.4)
     plt.show()
-    
+
     # metrics
     depths=nx.single_source_shortest_path_length(mst, source=-1)
     max_depth=max(depths.values())
