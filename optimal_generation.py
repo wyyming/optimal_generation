@@ -43,6 +43,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     masked_input_ids=targets.clone()
     masked_input_ids[0, 1:-1]=tokenizer.mask_token_id
     blk_logprob=compute_blk_logprob(masked_input_ids)
+    plt.figure(figsize=(12,10))
     G=nx.DiGraph()
     G.add_node(-1)
     for i,lp in enumerate(blk_logprob):
@@ -68,9 +69,10 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
         mst.nodes[i]['label']=" ".join(words)
     node_labels=nx.get_node_attributes(mst,"label")
     # nx.draw(mst,pos,with_labels=True,labels=node_labels)
-    nx.draw(mst,pos,with_labels=True)
+    nx.draw(mst,pos,with_labels=True, font_size=8, node_size=100)
     edge_labels=nx.get_edge_attributes(mst,"weight")
-    nx.draw_networkx_edge_labels(mst,pos,edge_labels=edge_labels,label_pos=0.4)
+    formatted_labels = {edge: f"{weight:.2f}" for edge, weight in edge_labels.items()}
+    nx.draw_networkx_edge_labels(mst,pos,edge_labels=formatted_labels,font_size=6)
     plt.show()
 
     # metrics
@@ -86,6 +88,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     print("sum log likelihood: ", sum(edge_labels.values()))
     
     # find loglikelihood of remembering previous levels
+    plt.figure(figsize=(12,10))
     rmb=nx.DiGraph()
     rmb.add_node(-1)
     level_input_ids=masked_input_ids.clone()
@@ -100,9 +103,10 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
         out_edges=mst.out_edges(nodes)
         for u,v in out_edges:
             rmb.add_edge(u,v,weight=blk_logprob[v].item())
-    nx.draw(rmb,pos,with_labels=True)
+    nx.draw(rmb,pos,with_labels=True, font_size=8, node_size=100)
     rmb_edge_labels=nx.get_edge_attributes(rmb,"weight")
-    nx.draw_networkx_edge_labels(rmb,pos,edge_labels=rmb_edge_labels)
+    formatted_rmb_edge_labels = {edge: f"{weight:.2f}" for edge, weight in rmb_edge_labels.items()}
+    nx.draw_networkx_edge_labels(rmb,pos,edge_labels=formatted_rmb_edge_labels, font_size=6)
     plt.show()
     print("sum log likelihood of remembering: ", sum(rmb_edge_labels.values()))
 
@@ -117,34 +121,5 @@ subset=ds["train"].select(range(10))
 for t in subset:
     # print(t["text"])
     find_optimal_gen_order(t["text"])
-
-# %%
-# verify probability of this generation order
-# TODO: update order so that generation order is correct
-total_prob=1
-text="[MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK] [MASK]"
-inputs=tokenizer(text, return_tensors="pt")
-targets=tokenizer(expected_text, return_tensors="pt").input_ids
-outputs=model(**inputs, labels=targets)
-initial_ids=blocks[order[1]]
-for ids in initial_ids:
-    prob=torch.nn.functional.softmax(outputs.logits[0][ids],dim=0)
-    total_prob*=prob[targets[0][ids]]
-
-for i in range(1,len(order)-1):
-  ids=blocks[order[i]] # [3,4],[1,2]
-  masked_words=["[MASK]"]*8
-  for j in ids:
-    masked_words.insert(j-1,words[j-1])
-  text=" ".join(masked_words)
-  inputs=tokenizer(text,return_tensors="pt")
-  outputs=model(**inputs,labels=targets)
-  next_pair=blocks[order[i+1]] # [1,2] [5,6]
-  for j in next_pair:
-    prob=torch.nn.functional.softmax(outputs.logits[0][j],dim=0)
-    total_prob*=prob[targets[0][j]]
-# total_prob+=prob[]
-print(total_prob)
-# 7.0385e-12
 
 # %%
