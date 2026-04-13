@@ -1,17 +1,24 @@
 # %%
 import torch
-from transformers import AutoTokenizer, AutoModelForMaskedLM
+# modernBert
+# from transformers import AutoTokenizer, AutoModelForMaskedLM
+
+# LLaDA-8B
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 import networkx as nx
 import matplotlib.pyplot as plt
-import math
 
 from collections import defaultdict
 
 # %%
+'''modernBert
 model_id="answerdotai/ModernBERT-base"
 tokenizer=AutoTokenizer.from_pretrained(model_id)
-model=AutoModelForMaskedLM.from_pretrained(model_id)
+model=AutoModelForMaskedLM.from_pretrained(model_id)'''
+# LLaDA-8B
+model = AutoModelForCausalLM.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True, dtype="auto") 
+tokenizer = AutoTokenizer.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True)
 
 # %%
 from datasets import load_dataset
@@ -121,5 +128,3 @@ subset=ds["train"].select(range(10))
 for t in subset:
     # print(t["text"])
     find_optimal_gen_order(t["text"])
-
-# %%
