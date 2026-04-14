@@ -1,32 +1,32 @@
-# %%
 import torch
 # modernBert
-# from transformers import AutoTokenizer, AutoModelForMaskedLM
+from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 # LLaDA-8B
-from transformers import AutoTokenizer, AutoModelForCausalLM
+# from transformers import AutoTokenizer, AutoModelForCausalLM
 
 import networkx as nx
 import matplotlib.pyplot as plt
 
 from collections import defaultdict
 
-# %%
-'''modernBert
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# print("cuda available:", torch.cuda.is_available())
+
+# modernBert
 model_id="answerdotai/ModernBERT-base"
 tokenizer=AutoTokenizer.from_pretrained(model_id)
-model=AutoModelForMaskedLM.from_pretrained(model_id)'''
+model=AutoModelForMaskedLM.from_pretrained(model_id)
+model=model.to(device)
 # LLaDA-8B
-model = AutoModelForCausalLM.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True, dtype="auto") 
-tokenizer = AutoTokenizer.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True)
+# model = AutoModelForCausalLM.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True, dtype="auto") 
+# tokenizer = AutoTokenizer.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True)
 
-# %%
 from datasets import load_dataset
 ds=load_dataset("roneneldan/TinyStories")
 
-# %%
 def find_optimal_gen_order(expected_text,blk_sz=2):
-    targets=tokenizer(expected_text, return_tensors="pt").input_ids
+    targets=tokenizer(expected_text, return_tensors="pt").input_ids.to(device)
     targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
     num_tokens=targets_main.shape[0]
 
@@ -50,7 +50,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     masked_input_ids=targets.clone()
     masked_input_ids[0, 1:-1]=tokenizer.mask_token_id
     blk_logprob=compute_blk_logprob(masked_input_ids)
-    plt.figure(figsize=(12,10))
+    plt.figure(figsize=(24,20))
     G=nx.DiGraph()
     G.add_node(-1)
     for i,lp in enumerate(blk_logprob):
@@ -75,12 +75,13 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
         words=[tokenizer.decode(targets_main[ind]) for ind in blk]
         mst.nodes[i]['label']=" ".join(words)
     node_labels=nx.get_node_attributes(mst,"label")
-    # nx.draw(mst,pos,with_labels=True,labels=node_labels)
-    nx.draw(mst,pos,with_labels=True, font_size=8, node_size=100)
+    nx.draw(mst,pos,with_labels=True,labels=node_labels)
+    nx.draw(mst,pos,with_labels=True, font_size=6, node_size=100)
     edge_labels=nx.get_edge_attributes(mst,"weight")
     formatted_labels = {edge: f"{weight:.2f}" for edge, weight in edge_labels.items()}
     nx.draw_networkx_edge_labels(mst,pos,edge_labels=formatted_labels,font_size=6)
-    plt.show()
+    plt.text(0.05, 0.95, f"Sum loglik: {sum(edge_labels.values()):.2f}", fontsize=10)
+    plt.savefig(f"trees/plot_{blk_sz}.png")
 
     # metrics
     depths=nx.single_source_shortest_path_length(mst, source=-1)
@@ -92,7 +93,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     print("node by levels: ", dict(levels))
     order=list(nx.lexicographical_topological_sort(mst))
     print("generation order: ", order)
-    print("sum log likelihood: ", sum(edge_labels.values()))
+    # print("sum log likelihood: ", sum(edge_labels.values()))
     
     # find loglikelihood of remembering previous levels
     plt.figure(figsize=(12,10))
@@ -114,17 +115,17 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     rmb_edge_labels=nx.get_edge_attributes(rmb,"weight")
     formatted_rmb_edge_labels = {edge: f"{weight:.2f}" for edge, weight in rmb_edge_labels.items()}
     nx.draw_networkx_edge_labels(rmb,pos,edge_labels=formatted_rmb_edge_labels, font_size=6)
-    plt.show()
+    plt.savefig("trees/remember_plot.png")
     print("sum log likelihood of remembering: ", sum(rmb_edge_labels.values()))
 
 
-# %%
 text=ds["train"][0]["text"]
-# text="The quick brown fox jumps over the lazy dog today"
-find_optimal_gen_order(text)
+# # text="The quick brown fox jumps over the lazy dog today"
+for i in range(2,9,2):
+    find_optimal_gen_order(text,i)
+# find_optimal_gen_order(text)
 
-# %%
-subset=ds["train"].select(range(10))
-for t in subset:
-    # print(t["text"])
-    find_optimal_gen_order(t["text"])
+# subset=ds["train"].select(range(10))
+# for t in subset:
+#     print(t["text"])
+#     find_optimal_gen_order(t["text"])
