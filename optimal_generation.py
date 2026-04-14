@@ -80,7 +80,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     edge_labels=nx.get_edge_attributes(mst,"weight")
     formatted_labels = {edge: f"{weight:.2f}" for edge, weight in edge_labels.items()}
     nx.draw_networkx_edge_labels(mst,pos,edge_labels=formatted_labels,font_size=6)
-    plt.text(0.05, 0.95, f"Sum loglik: {sum(edge_labels.values()):.2f}", fontsize=10)
+    plt.text(-1, 0.02, f"Sum loglik: {sum(edge_labels.values()):.2f}", fontsize=10)
     plt.savefig(f"trees/plot_{blk_sz}.png")
 
     # metrics
@@ -115,13 +115,12 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     rmb_edge_labels=nx.get_edge_attributes(rmb,"weight")
     formatted_rmb_edge_labels = {edge: f"{weight:.2f}" for edge, weight in rmb_edge_labels.items()}
     nx.draw_networkx_edge_labels(rmb,pos,edge_labels=formatted_rmb_edge_labels, font_size=6)
-    plt.savefig("trees/remember_plot.png")
-    print("sum log likelihood of remembering: ", sum(rmb_edge_labels.values()))
-
+    plt.text(-1, 0.02, f"Sum loglik: {sum(rmb_edge_labels.values()):.2f}", fontsize=10)
+    plt.savefig(f"trees/remember_plot_{blk_sz}.png")
 
 text=ds["train"][0]["text"]
 # # text="The quick brown fox jumps over the lazy dog today"
-for i in range(2,9,2):
+for i in range(2,11,2):
     find_optimal_gen_order(text,i)
 # find_optimal_gen_order(text)
 
