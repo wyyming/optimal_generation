@@ -7,8 +7,10 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 from collections import defaultdict
+import os
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device="cpu"
 # print("cuda available:", torch.cuda.is_available())
 
 # LLaDA-8B
@@ -19,7 +21,7 @@ tokenizer = AutoTokenizer.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_
 from datasets import load_dataset
 ds=load_dataset("roneneldan/TinyStories")
 
-def find_optimal_gen_order(expected_text,blk_sz=2):
+def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
     targets=tokenizer(expected_text, return_tensors="pt").input_ids.to(device)
     targets_main=targets[0][:] # targets_main.shape --> [num of token]
     num_tokens=targets_main.shape[0]
@@ -75,7 +77,9 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     formatted_labels = {edge: f"{weight:.2f}" for edge, weight in edge_labels.items()}
     nx.draw_networkx_edge_labels(mst,pos,edge_labels=formatted_labels,font_size=6)
     plt.text(-1, 0.02, f"Sum loglik: {sum(edge_labels.values()):.2f}", fontsize=10)
-    plt.savefig(f"trees/plot_{blk_sz}.png")
+    print("independent loglikelihood: ", sum(edge_labels.values()))
+    os.makedirs(f"trees/{text_ind}", exist_ok=True)
+    plt.savefig(f"trees/{text_ind}/plot_{blk_sz}.png")
 
     # metrics
     depths=nx.single_source_shortest_path_length(mst, source=-1)
@@ -84,10 +88,9 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     levels=defaultdict(list)
     for node, depth in depths.items():
         levels[depth].append(node)
-    print("node by levels: ", dict(levels))
+    # print("node by levels: ", dict(levels))
     order=list(nx.lexicographical_topological_sort(mst))
-    print("generation order: ", order)
-    # print("sum log likelihood: ", sum(edge_labels.values()))
+    # print("generation order: ", order)
     
     # find loglikelihood of remembering previous levels
     plt.figure(figsize=(12,10))
@@ -110,18 +113,32 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     formatted_rmb_edge_labels = {edge: f"{weight:.2f}" for edge, weight in rmb_edge_labels.items()}
     nx.draw_networkx_edge_labels(rmb,pos,edge_labels=formatted_rmb_edge_labels, font_size=6)
     plt.text(-1, 0.02, f"Sum loglik: {sum(rmb_edge_labels.values()):.2f}", fontsize=10)
-    plt.savefig(f"trees/remember_plot_{blk_sz}.png")
+    print("remembering loglikelihood: ", sum(rmb_edge_labels.values()))
+    plt.savefig(f"trees/{text_ind}/remember_plot_{blk_sz}.png")
 
-    # find loglikelihood of autoaggressive block generation
-    
+    # find loglikelihood of autoaggressive block generation remembering previous token blocks
+    blklogsum=0
+    autoaggressive_input_ids=masked_input_ids.clone()
+    for i,blk in enumerate(blocks):
+        blk_logprob=compute_blk_logprob(autoaggressive_input_ids)
+        blklogsum+=blk_logprob[i].item()
+        for ind in blk:
+            autoaggressive_input_ids[0][ind]=targets[0][ind]
+    print("autoaggressive loglikelihood: ", blklogsum)
+    txt_path=f"trees/{text_ind}/loglikelihoods.txt"
+    with open(txt_path, "a") as f:
+        f.write(f"Independent loglikelihood {blk_sz}: {sum(edge_labels.values()):.2f}\n")
+        f.write(f"Remembering loglikelihood {blk_sz}: {sum(rmb_edge_labels.values()):.2f}\n")
+        f.write(f"Autoaggressive loglikelihood {blk_sz}: {blklogsum:.2f}\n")
 
-text=ds["train"][0]["text"]
+# text=ds["train"][0]["text"]
 # text="The quick brown fox jumps over the lazy dog today"
-for i in range(2,11,2):
-    find_optimal_gen_order(text,i)
-# find_optimal_gen_order(text)
+# for i in range(2,11,2):
+    # find_optimal_gen_order(text,i)
+# find_optimal_gen_order(text,0,2)
 
-# subset=ds["train"].select(range(10))
-# for t in subset:
-#     print(t["text"])
-#     find_optimal_gen_order(t["text"])
+subset=ds["train"].select(range(5))
+for ind,t in enumerate(subset):
+    print(t["text"])
+    for i in range(2,11,2):
+        find_optimal_gen_order(t["text"], ind, i)

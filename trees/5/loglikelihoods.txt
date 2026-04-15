@@ -1,0 +1,3 @@
+Independent loglikelihood 10: -767.10
+Remembering loglikelihood 10: -608.03
+Autoaggressive loglikelihood 10: -543.90
