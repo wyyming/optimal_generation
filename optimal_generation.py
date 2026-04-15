@@ -1,9 +1,7 @@
 import torch
-# modernBert
-from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 # LLaDA-8B
-# from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModel
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -13,29 +11,25 @@ from collections import defaultdict
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # print("cuda available:", torch.cuda.is_available())
 
-# modernBert
-model_id="answerdotai/ModernBERT-base"
-tokenizer=AutoTokenizer.from_pretrained(model_id)
-model=AutoModelForMaskedLM.from_pretrained(model_id)
-model=model.to(device)
 # LLaDA-8B
-# model = AutoModelForCausalLM.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True, dtype="auto") 
-# tokenizer = AutoTokenizer.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True)
+model = AutoModel.from_pretrained('GSAI-ML/LLaDA-8B-Base', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device)
+tokenizer = AutoTokenizer.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True)
+# mask_token_id=126336
 
 from datasets import load_dataset
 ds=load_dataset("roneneldan/TinyStories")
 
 def find_optimal_gen_order(expected_text,blk_sz=2):
     targets=tokenizer(expected_text, return_tensors="pt").input_ids.to(device)
-    targets_main=targets[0][1:-1] # targets_main.shape --> [num of token]
+    targets_main=targets[0][:] # targets_main.shape --> [num of token]
     num_tokens=targets_main.shape[0]
 
     blocks=[list(range(i, min(i+blk_sz, num_tokens))) for i in range(0, num_tokens, blk_sz)]
     num_blocks=len(blocks)
 
     def compute_blk_logprob(input_ids):
-        outputs=model(input_ids=input_ids, labels=targets)
-        logits_main=outputs.logits[0][1:-1][:] # logits_main.shape --> [num of token, vocab size]
+        outputs=model(input_ids)
+        logits_main=outputs.logits[0][:][:] # logits_main.shape --> [num of token, vocab size]
         # compute cross entropy for all tokens at once
         nll=torch.nn.functional.cross_entropy(logits_main, targets_main,reduction='none')
         # transform [num of tokens] to [num of blocks, block size] then sum across columns
@@ -48,7 +42,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
 
     # fully masked text
     masked_input_ids=targets.clone()
-    masked_input_ids[0, 1:-1]=tokenizer.mask_token_id
+    masked_input_ids[0][:]=126336 # mask_token_id
     blk_logprob=compute_blk_logprob(masked_input_ids)
     plt.figure(figsize=(24,20))
     G=nx.DiGraph()
@@ -60,7 +54,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     for i in range(num_blocks):
         revealed_input_ids=masked_input_ids.clone()
         for ind in blocks[i]:
-            revealed_input_ids[0][ind+1]=targets[0][ind+1]
+            revealed_input_ids[0][ind]=targets[0][ind]
         blk_logprob=compute_blk_logprob(revealed_input_ids)
         for j,lp in enumerate(blk_logprob):
             if j!=i:
@@ -105,7 +99,7 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
             if n==-1:
                 continue
             for ind in blocks[n]:
-                level_input_ids[0][ind+1]=targets[0][ind+1]
+                level_input_ids[0][ind]=targets[0][ind]
         blk_logprob=compute_blk_logprob(level_input_ids)
         # keep original generation order
         out_edges=mst.out_edges(nodes)
@@ -118,8 +112,11 @@ def find_optimal_gen_order(expected_text,blk_sz=2):
     plt.text(-1, 0.02, f"Sum loglik: {sum(rmb_edge_labels.values()):.2f}", fontsize=10)
     plt.savefig(f"trees/remember_plot_{blk_sz}.png")
 
+    # find loglikelihood of autoaggressive block generation
+    
+
 text=ds["train"][0]["text"]
-# # text="The quick brown fox jumps over the lazy dog today"
+# text="The quick brown fox jumps over the lazy dog today"
 for i in range(2,11,2):
     find_optimal_gen_order(text,i)
 # find_optimal_gen_order(text)
