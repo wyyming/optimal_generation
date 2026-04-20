@@ -116,7 +116,7 @@ def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
     print("remembering loglikelihood: ", sum(rmb_edge_labels.values()))
     plt.savefig(f"trees/{text_ind}/remember_plot_{blk_sz}.png")
 
-    # find loglikelihood of autoaggressive block generation remembering previous token blocks
+    '''# find loglikelihood of autoaggressive block generation remembering previous token blocks
     blklogsum=0
     autoaggressive_input_ids=masked_input_ids.clone()
     for i,blk in enumerate(blocks):
@@ -129,7 +129,28 @@ def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
     with open(txt_path, "a") as f:
         f.write(f"Independent loglikelihood {blk_sz}: {sum(edge_labels.values()):.2f}\n")
         f.write(f"Remembering loglikelihood {blk_sz}: {sum(rmb_edge_labels.values()):.2f}\n")
-        f.write(f"Autoaggressive loglikelihood {blk_sz}: {blklogsum:.2f}\n")
+        f.write(f"Autoaggressive loglikelihood {blk_sz}: {blklogsum:.2f}\n")'''
+
+    # reveal one token at a time, always picking the masked position with highest predicted probability
+    greedy_input_ids = masked_input_ids.clone()
+    greedy_logsum = 0.0
+    masked_positions = list(range(num_tokens))
+    greedy_order = []
+    for _ in range(num_tokens):
+        outputs = model(greedy_input_ids)
+        log_probs = torch.nn.functional.log_softmax(outputs.logits[0], dim=-1)  # [num_tokens, vocab]
+        # log prob of the correct token at each still-masked position
+        pos_logprobs = log_probs[masked_positions, targets_main[masked_positions]]
+        best_idx = pos_logprobs.argmax().item()
+        best_pos = masked_positions[best_idx]
+        greedy_logsum += pos_logprobs[best_idx].item()
+        greedy_order.append((best_pos, tokenizer.decode(targets_main[best_pos])))
+        greedy_input_ids[0][best_pos] = targets[0][best_pos]
+        masked_positions.pop(best_idx)
+    print("greedy loglikelihood: ", greedy_logsum)
+    print("greedy generation order:", [(pos, tok) for pos, tok in greedy_order])
+
+
 
 # text=ds["train"][0]["text"]
 # text="The quick brown fox jumps over the lazy dog today"
