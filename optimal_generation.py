@@ -116,7 +116,7 @@ def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
     print("remembering loglikelihood: ", sum(rmb_edge_labels.values()))
     plt.savefig(f"trees/{text_ind}/remember_plot_{blk_sz}.png")
 
-    '''# find loglikelihood of autoaggressive block generation remembering previous token blocks
+    # find loglikelihood of autoaggressive block generation remembering previous token blocks
     blklogsum=0
     autoaggressive_input_ids=masked_input_ids.clone()
     for i,blk in enumerate(blocks):
@@ -125,11 +125,11 @@ def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
         for ind in blk:
             autoaggressive_input_ids[0][ind]=targets[0][ind]
     print("autoaggressive loglikelihood: ", blklogsum)
-    txt_path=f"trees/{text_ind}/loglikelihoods.txt"
-    with open(txt_path, "a") as f:
-        f.write(f"Independent loglikelihood {blk_sz}: {sum(edge_labels.values()):.2f}\n")
-        f.write(f"Remembering loglikelihood {blk_sz}: {sum(rmb_edge_labels.values()):.2f}\n")
-        f.write(f"Autoaggressive loglikelihood {blk_sz}: {blklogsum:.2f}\n")'''
+    # txt_path=f"trees/{text_ind}/loglikelihoods.txt"
+    # with open(txt_path, "a") as f:
+    #     f.write(f"Independent loglikelihood {blk_sz}: {sum(edge_labels.values()):.2f}\n")
+    #     f.write(f"Remembering loglikelihood {blk_sz}: {sum(rmb_edge_labels.values()):.2f}\n")
+    #     f.write(f"Autoaggressive loglikelihood {blk_sz}: {blklogsum:.2f}\n")
 
     # reveal one token at a time, always picking the masked position with highest predicted probability
     greedy_input_ids = masked_input_ids.clone()
@@ -152,14 +152,14 @@ def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
 
 
 
-# text=ds["train"][0]["text"]
+text=ds["train"][0]["text"]
 # text="The quick brown fox jumps over the lazy dog today"
 # for i in range(2,11,2):
     # find_optimal_gen_order(text,i)
-# find_optimal_gen_order(text,0,2)
+find_optimal_gen_order(text,5,2)
 
-subset=ds["train"].select(range(5))
-for ind,t in enumerate(subset):
-    print(t["text"])
-    for i in range(2,11,2):
-        find_optimal_gen_order(t["text"], ind, i)
+# subset=ds["train"].select(range(5))
+# for ind,t in enumerate(subset):
+#     print(t["text"])
+#     for i in range(2,11,2):
+#         find_optimal_gen_order(t["text"], ind, i)
