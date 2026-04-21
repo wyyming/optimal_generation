@@ -131,24 +131,23 @@ def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
     #     f.write(f"Remembering loglikelihood {blk_sz}: {sum(rmb_edge_labels.values()):.2f}\n")
     #     f.write(f"Autoaggressive loglikelihood {blk_sz}: {blklogsum:.2f}\n")
 
-    # reveal one token at a time, always picking the masked position with highest predicted probability
+    # reveal one block at a time, always picking the masked block with highest predicted log-prob
     greedy_input_ids = masked_input_ids.clone()
     greedy_logsum = 0.0
-    masked_positions = list(range(num_tokens))
+    remaining_blocks = list(range(num_blocks))
     greedy_order = []
-    for _ in range(num_tokens):
-        outputs = model(greedy_input_ids)
-        log_probs = torch.nn.functional.log_softmax(outputs.logits[0], dim=-1)  # [num_tokens, vocab]
-        # log prob of the correct token at each still-masked position
-        pos_logprobs = log_probs[masked_positions, targets_main[masked_positions]]
-        best_idx = pos_logprobs.argmax().item()
-        best_pos = masked_positions[best_idx]
-        greedy_logsum += pos_logprobs[best_idx].item()
-        greedy_order.append((best_pos, tokenizer.decode(targets_main[best_pos])))
-        greedy_input_ids[0][best_pos] = targets[0][best_pos]
-        masked_positions.pop(best_idx)
+    for _ in range(num_blocks):
+        blk_logprob = compute_blk_logprob(greedy_input_ids)
+        best_idx = blk_logprob[remaining_blocks].argmax().item()
+        best_blk = remaining_blocks[best_idx]
+        greedy_logsum += blk_logprob[best_blk].item()
+        words = " ".join(tokenizer.decode(targets_main[ind]) for ind in blocks[best_blk])
+        greedy_order.append((best_blk, words))
+        for ind in blocks[best_blk]:
+            greedy_input_ids[0][ind] = targets[0][ind]
+        remaining_blocks.pop(best_idx)
     print("greedy loglikelihood: ", greedy_logsum)
-    print("greedy generation order:", [(pos, tok) for pos, tok in greedy_order])
+    print("greedy generation order:", greedy_order)
 
 
 
