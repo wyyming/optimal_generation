@@ -141,7 +141,7 @@ def find_optimal_gen_order(expected_text, text_ind, blk_sz=2):
         best_idx = blk_logprob[remaining_blocks].argmax().item()
         best_blk = remaining_blocks[best_idx]
         greedy_logsum += blk_logprob[best_blk].item()
-        words = [tokenizer.decode(targets_main[ind]) for ind in blocks[best_blk]]
+        words = "".join(tokenizer.decode(targets_main[ind]) for ind in blocks[best_blk])
         greedy_order.append((best_blk, words))
         for ind in blocks[best_blk]:
             greedy_input_ids[0][ind] = targets[0][ind]
