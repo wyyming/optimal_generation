@@ -18,3 +18,10 @@ print(prob)
 ![alt text](image.png)
 
 
+# Step 1: generate data (will take a while — many model forward passes)
+python3 analyze_orders.py
+
+# Step 2: start server
+pip install fastapi uvicorn
+python3 server.py
+# then open http://localhost:8000

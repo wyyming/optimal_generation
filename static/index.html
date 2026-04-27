@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Optimal Generation Order Analysis</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  h1 { font-size: 1.6rem; font-weight: 700; color: #a78bfa; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.1rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  h3 { font-size: 0.95rem; color: #64748b; margin-bottom: 0.5rem; }
+
+  .controls {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  label { font-size: 0.875rem; color: #94a3b8; }
+
+  select {
+    background: #1e2130;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.9rem;
+    margin-left: 0.5rem;
+    cursor: pointer;
+    outline: none;
+  }
+  select:focus { border-color: #7c3aed; }
+
+  .card {
+    background: #1e2130;
+    border: 1px solid #2d3748;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .text-display {
+    font-family: 'Georgia', serif;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: #cbd5e1;
+  }
+
+  /* Metrics table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  th {
+    text-align: left;
+    color: #64748b;
+    font-weight: 600;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #2d3748;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid #1a2035;
+    color: #cbd5e1;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  tr.ltr-row td { color: #94a3b8; font-style: italic; }
+
+  .rank-badge {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #312e81;
+    color: #a78bfa;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+    font-weight: 700;
+    font-size: 0.8rem;
+  }
+
+  .val-pos { color: #34d399; }
+  .val-neg { color: #f87171; }
+
+  .btn-animate {
+    background: #4c1d95;
+    color: #ddd6fe;
+    border: none;
+    border-radius: 5px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-animate:hover { background: #5b21b6; }
+  .btn-animate.active { background: #7c3aed; }
+
+  /* Animation section */
+  .anim-controls {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    background: #1e3a5f;
+    color: #93c5fd;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    padding: 0.4rem 1rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: #1d4ed8; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-play { background: #14532d; border-color: #16a34a; color: #86efac; }
+  .btn-play:hover { background: #166534; }
+  .btn-pause { background: #78350f; border-color: #d97706; color: #fcd34d; }
+  .btn-pause:hover { background: #92400e; }
+
+  .speed-label { font-size: 0.8rem; color: #64748b; }
+
+  input[type=range] {
+    accent-color: #7c3aed;
+    width: 100px;
+  }
+
+  .step-info {
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-left: auto;
+  }
+
+  /* Block animation display */
+  .block-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 1rem 0;
+    min-height: 60px;
+    align-items: flex-start;
+  }
+
+  .block-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-family: 'Georgia', serif;
+    font-size: 0.9rem;
+    transition: all 0.35s ease;
+    white-space: pre;
+  }
+
+  .block-pill.masked {
+    background: #1a2035;
+    color: #334155;
+    border: 1px dashed #334155;
+  }
+
+  .block-pill.just-revealed {
+    background: #3b0764;
+    color: #e9d5ff;
+    border: 1px solid #7c3aed;
+    box-shadow: 0 0 12px #7c3aed88;
+  }
+
+  .block-pill.revealed {
+    background: #1e3a2f;
+    color: #86efac;
+    border: 1px solid #16a34a44;
+  }
+
+  .order-display {
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: #475569;
+  }
+
+  .order-step {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin: 2px;
+    background: #1a2035;
+    border: 1px solid #2d3748;
+    font-family: monospace;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  .order-step.done { background: #14532d22; color: #4ade80; border-color: #16a34a44; }
+  .order-step.current { background: #4c1d95; color: #ddd6fe; border-color: #7c3aed; }
+
+  /* LTR reference box */
+  .ltr-box {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+  .ltr-metric { font-size: 0.875rem; }
+  .ltr-metric span { font-weight: 600; color: #94a3b8; }
+
+  .no-data { color: #475569; font-size: 0.9rem; padding: 1rem 0; }
+
+  .selected-row { background: #1c1040 !important; }
+</style>
+</head>
+<body>
+
+<h1>Optimal Generation Order Analysis</h1>
+
+<div class="controls">
+  <label>Text example: <select id="selText"></select></label>
+  <label>Block size: <select id="selBlk"></select></label>
+</div>
+
+<div class="card">
+  <h2>Text</h2>
+  <div class="text-display" id="textDisplay"></div>
+</div>
+
+<div class="card">
+  <h2>Top-5 Arborescences by Tree-Based Likelihood</h2>
+  <table id="metricsTable">
+    <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Tree Likelihood</th>
+        <th>Remember Likelihood</th>
+        <th>Depth</th>
+        <th>TED from LTR</th>
+        <th>Animate</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <div style="margin-top:1.25rem;">
+    <h3>Left-to-Right Reference</h3>
+    <div class="ltr-box" id="ltrBox"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Block Reveal Animation</h2>
+  <div id="animInfo" style="font-size:0.8rem;color:#64748b;margin-bottom:0.75rem;"></div>
+  <div class="anim-controls">
+    <button class="btn btn-play" id="btnPlay" onclick="play()">▶ Play</button>
+    <button class="btn btn-pause" id="btnPause" onclick="pause()" disabled>⏸ Pause</button>
+    <button class="btn" id="btnReset" onclick="resetAnim()">↺ Reset</button>
+    <button class="btn" id="btnStep" onclick="step()">→ Step</button>
+    <span class="speed-label">Speed:</span>
+    <input type="range" id="speedSlider" min="100" max="2000" value="700" step="100"
+           oninput="updateSpeed(this.value)" />
+    <span id="speedVal" style="font-size:0.75rem;color:#475569;">0.7s</span>
+    <span class="step-info" id="stepInfo">Select an arborescence to animate</span>
+  </div>
+  <div class="block-display" id="blockDisplay"></div>
+  <div class="order-display" id="orderDisplay"></div>
+</div>
+
+<script>
+let allData = [];
+let current = null;       // current result object
+let currentArbIdx = -1;   // which arborescence is selected
+let animStep = 0;         // how many blocks have been revealed
+let animTimer = null;
+let animInterval = 700;
+
+// ── Load data ──────────────────────────────────────────────────────────────
+
+fetch('/static/results.json')
+  .then(r => r.json())
+  .then(data => {
+    allData = data;
+    buildSelects();
+    update();
+  })
+  .catch(() => {
+    document.getElementById('textDisplay').textContent =
+      'results.json not found. Run analyze_orders.py first.';
+  });
+
+// ── Selects ────────────────────────────────────────────────────────────────
+
+function buildSelects() {
+  const textIdxs = [...new Set(allData.map(d => d.text_idx))].sort((a,b)=>a-b);
+  const blkSzs   = [...new Set(allData.map(d => d.blk_sz))].sort((a,b)=>a-b);
+
+  const selText = document.getElementById('selText');
+  const selBlk  = document.getElementById('selBlk');
+
+  textIdxs.forEach(i => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `Example ${i}`;
+    selText.appendChild(opt);
+  });
+
+  blkSzs.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b;
+    opt.textContent = `Block size ${b}`;
+    selBlk.appendChild(opt);
+  });
+
+  selText.addEventListener('change', update);
+  selBlk.addEventListener('change', update);
+}
+
+function getCurrent() {
+  const ti = parseInt(document.getElementById('selText').value);
+  const bs = parseInt(document.getElementById('selBlk').value);
+  return allData.find(d => d.text_idx === ti && d.blk_sz === bs) || null;
+}
+
+// ── Main update ────────────────────────────────────────────────────────────
+
+function update() {
+  current = getCurrent();
+  currentArbIdx = -1;
+  stopAnim();
+
+  if (!current) {
+    document.getElementById('textDisplay').textContent = 'No data for this selection.';
+    document.getElementById('tableBody').innerHTML = '';
+    document.getElementById('ltrBox').innerHTML = '';
+    document.getElementById('blockDisplay').innerHTML = '';
+    document.getElementById('orderDisplay').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('textDisplay').textContent = current.text;
+  renderTable();
+  renderLtr();
+  renderBlocks([]);   // all masked initially
+  renderOrder(-1);
+  document.getElementById('animInfo').textContent = '';
+  document.getElementById('stepInfo').textContent = 'Select an arborescence to animate';
+}
+
+// ── Table ──────────────────────────────────────────────────────────────────
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+
+  current.arborescences.forEach((arb, idx) => {
+    const tr = document.createElement('tr');
+    tr.id = `row-${idx}`;
+    tr.innerHTML = `
+      <td><span class="rank-badge">${arb.rank}</span></td>
+      <td class="${arb.tree_likelihood >= 0 ? 'val-pos' : 'val-neg'}">${arb.tree_likelihood.toFixed(2)}</td>
+      <td class="${arb.remember_likelihood >= 0 ? 'val-pos' : 'val-neg'}">${arb.remember_likelihood.toFixed(2)}</td>
+      <td>${arb.depth}</td>
+      <td>${arb.ted_from_ltr}</td>
+      <td><button class="btn-animate" id="btn-${idx}" onclick="selectArb(${idx})">Animate</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function selectArb(idx) {
+  // Update button highlights
+  document.querySelectorAll('.btn-animate').forEach((b, i) => {
+    b.classList.toggle('active', i === idx);
+  });
+  document.querySelectorAll('tbody tr').forEach((r, i) => {
+    r.classList.toggle('selected-row', i === idx);
+  });
+
+  currentArbIdx = idx;
+  stopAnim();
+  animStep = 0;
+
+  const arb = current.arborescences[idx];
+  document.getElementById('animInfo').textContent =
+    `Rank ${arb.rank} — generation order: [${arb.generation_order.join(' → ')}]`;
+  document.getElementById('stepInfo').textContent = `Step 0 / ${arb.generation_order.length}`;
+  renderBlocks([]);
+  renderOrder(-1);
+}
+
+// ── LTR reference ──────────────────────────────────────────────────────────
+
+function renderLtr() {
+  document.getElementById('ltrBox').innerHTML = `
+    <div class="ltr-metric">Tree likelihood: <span>${current.ltr_tree_likelihood.toFixed(2)}</span></div>
+    <div class="ltr-metric">Remember likelihood: <span>${current.ltr_remember_likelihood.toFixed(2)}</span></div>
+  `;
+}
+
+// ── Block display ──────────────────────────────────────────────────────────
+
+function renderBlocks(revealedUpTo) {
+  // revealedUpTo: set of block indices that have been revealed so far
+  // last item in revealedUpTo is "just revealed"
+  const display = document.getElementById('blockDisplay');
+  if (!current) { display.innerHTML = ''; return; }
+
+  const revealedSet = new Set(revealedUpTo);
+  const lastRevealed = revealedUpTo.length > 0 ? revealedUpTo[revealedUpTo.length - 1] : -1;
+
+  display.innerHTML = current.block_labels.map((label, i) => {
+    let cls = 'masked';
+    if (revealedSet.has(i)) {
+      cls = i === lastRevealed ? 'just-revealed' : 'revealed';
+    }
+    const display_label = label.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    return `<span class="block-pill ${cls}">${cls === 'masked' ? '&nbsp;???&nbsp;' : display_label}</span>`;
+  }).join('');
+
+  // After a short delay, downgrade just-revealed to revealed
+  if (lastRevealed !== -1) {
+    setTimeout(() => {
+      const pills = display.querySelectorAll('.block-pill.just-revealed');
+      pills.forEach(p => { p.classList.remove('just-revealed'); p.classList.add('revealed'); });
+    }, 500);
+  }
+}
+
+function renderOrder(currentStepIdx) {
+  const display = document.getElementById('orderDisplay');
+  if (currentArbIdx < 0 || !current) { display.innerHTML = ''; return; }
+
+  const order = current.arborescences[currentArbIdx].generation_order;
+  display.innerHTML = order.map((blockIdx, stepIdx) => {
+    let cls = '';
+    if (stepIdx < currentStepIdx) cls = 'done';
+    else if (stepIdx === currentStepIdx) cls = 'current';
+    const label = (current.block_labels[blockIdx] || '').trim().slice(0, 12);
+    return `<span class="order-step ${cls}" title="block ${blockIdx}">#${blockIdx}: ${label}</span>`;
+  }).join(' → ');
+}
+
+// ── Animation ──────────────────────────────────────────────────────────────
+
+function play() {
+  if (currentArbIdx < 0) return;
+  const arb = current.arborescences[currentArbIdx];
+  if (animStep >= arb.generation_order.length) resetAnim();
+
+  document.getElementById('btnPlay').disabled = true;
+  document.getElementById('btnPause').disabled = false;
+
+  animTimer = setInterval(() => {
+    if (animStep >= arb.generation_order.length) {
+      pause();
+      return;
+    }
+    step();
+  }, animInterval);
+}
+
+function pause() {
+  clearInterval(animTimer);
+  animTimer = null;
+  document.getElementById('btnPlay').disabled = false;
+  document.getElementById('btnPause').disabled = true;
+}
+
+function stopAnim() {
+  pause();
+  animStep = 0;
+}
+
+function resetAnim() {
+  stopAnim();
+  if (currentArbIdx >= 0 && current) {
+    const arb = current.arborescences[currentArbIdx];
+    document.getElementById('stepInfo').textContent = `Step 0 / ${arb.generation_order.length}`;
+    renderBlocks([]);
+    renderOrder(-1);
+  }
+}
+
+function step() {
+  if (currentArbIdx < 0 || !current) return;
+  const arb = current.arborescences[currentArbIdx];
+  if (animStep >= arb.generation_order.length) return;
+
+  animStep++;
+  const revealed = arb.generation_order.slice(0, animStep);
+  renderBlocks(revealed);
+  renderOrder(animStep - 1);
+  document.getElementById('stepInfo').textContent =
+    `Step ${animStep} / ${arb.generation_order.length} — revealed block ${arb.generation_order[animStep-1]}`;
+
+  if (animStep >= arb.generation_order.length) {
+    pause();
+    document.getElementById('stepInfo').textContent = `Complete (${arb.generation_order.length} blocks)`;
+  }
+}
+
+function updateSpeed(val) {
+  animInterval = parseInt(val);
+  document.getElementById('speedVal').textContent = (animInterval / 1000).toFixed(1) + 's';
+  if (animTimer) {
+    pause();
+    play();
+  }
+}
+</script>
+</body>
+</html>

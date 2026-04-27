@@ -10,7 +10,7 @@ from collections import defaultdict
 import os
 
 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device="cpu"
+device="cpu"
 # print("cuda available:", torch.cuda.is_available())
 
 # LLaDA-8B
