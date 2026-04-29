@@ -15,14 +15,10 @@ K = 5
 MASK_TOKEN_ID = 126336
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = AutoModel.from_pretrained(
-    'GSAI-ML/LLaDA-8B-Base', trust_remote_code=True, torch_dtype=torch.bfloat16
-).to(device)
+model = AutoModel.from_pretrained('GSAI-ML/LLaDA-8B-Base', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device)
 tokenizer = AutoTokenizer.from_pretrained("GSAI-ML/LLaDA-8B-Base", trust_remote_code=True)
 ds = load_dataset("roneneldan/TinyStories")
 
-
-# ── Model utilities ───────────────────────────────────────────────────────────
 
 def compute_blk_logprob(input_ids, targets_main, num_blocks, blk_sz):
     num_tokens = targets_main.shape[0]
@@ -35,8 +31,6 @@ def compute_blk_logprob(input_ids, targets_main, num_blocks, blk_sz):
         nll = torch.cat([nll, torch.zeros(blk_sz - remainder, device=nll.device)])
     return -nll.view(num_blocks, blk_sz).sum(dim=1)
 
-
-# ── Graph construction ─────────────────────────────────────────────────────────
 
 def build_graph(targets, blocks, masked_input_ids):
     targets_main = targets[0]
@@ -60,8 +54,6 @@ def build_graph(targets, blocks, masked_input_ids):
 
     return G
 
-
-# ── K-best arborescences ───────────────────────────────────────────────────────
 
 def find_top_k_arborescences(G, k=5):
     seen = []
@@ -117,8 +109,6 @@ def find_top_k_arborescences(G, k=5):
     return results  # list of (weight, tree)
 
 
-# ── Likelihood metrics ─────────────────────────────────────────────────────────
-
 def compute_tree_likelihood(tree, G):
     return sum(G[u][v]['weight'] for u, v in tree.edges() if G.has_edge(u, v))
 
@@ -152,8 +142,6 @@ def compute_remember_likelihood(tree, blocks, targets, masked_input_ids):
     return total
 
 
-# ── LTR tree ──────────────────────────────────────────────────────────────────
-
 def build_ltr_tree(num_blocks):
     T = nx.DiGraph()
     T.add_node(-1)
@@ -162,8 +150,6 @@ def build_ltr_tree(num_blocks):
         T.add_edge(i, i + 1)
     return T
 
-
-# ── Unordered tree-edit distance ──────────────────────────────────────────────
 
 def _subtree_size(tree, node, cache):
     if node in cache:
@@ -174,7 +160,7 @@ def _subtree_size(tree, node, cache):
 
 
 def unordered_ted(T1, T2):
-    """Unordered tree edit distance between T1 and T2, both rooted at -1."""
+    # Unordered tree edit distance between T1 and T2, both rooted at -1
     size1, size2 = {}, {}
     for n in T1.nodes():
         _subtree_size(T1, n, size1)
@@ -218,8 +204,6 @@ def unordered_ted(T1, T2):
     return int(round(ted(-1, -1)))
 
 
-# ── Tree serialization ────────────────────────────────────────────────────────
-
 def tree_to_dict(tree, blocks, tokenizer, targets_main, node=-1):
     info = {'id': node, 'label': 'start' if node == -1 else
             ''.join(tokenizer.decode(targets_main[ind]) for ind in blocks[node])}
@@ -230,10 +214,13 @@ def tree_to_dict(tree, blocks, tokenizer, targets_main, node=-1):
 
 
 def get_generation_order(tree):
-    return [n for n in nx.lexicographical_topological_sort(tree) if n != -1]
+    depths = nx.single_source_shortest_path_length(tree, source=-1)
+    levels = defaultdict(list)
+    for node, depth in depths.items():
+        if node != -1:
+            levels[depth].append(node)
+    return [sorted(levels[d]) for d in sorted(levels.keys()) if levels[d]]
 
-
-# ── Main analysis ─────────────────────────────────────────────────────────────
 
 def analyze_one(text_idx, text, blk_sz):
     print(f"  [text={text_idx}, blk_sz={blk_sz}] tokenizing...")

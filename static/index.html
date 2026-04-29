@@ -354,7 +354,7 @@ function update() {
   document.getElementById('textDisplay').textContent = current.text;
   renderTable();
   renderLtr();
-  renderBlocks([]);   // all masked initially
+  renderBlocks(new Set(), new Set());
   renderOrder(-1);
   document.getElementById('animInfo').textContent = '';
   document.getElementById('stepInfo').textContent = 'Select an arborescence to animate';
@@ -382,7 +382,6 @@ function renderTable() {
 }
 
 function selectArb(idx) {
-  // Update button highlights
   document.querySelectorAll('.btn-animate').forEach((b, i) => {
     b.classList.toggle('active', i === idx);
   });
@@ -395,10 +394,12 @@ function selectArb(idx) {
   animStep = 0;
 
   const arb = current.arborescences[idx];
+  // generation_order is now list of levels e.g. [[2], [0,1], [3]]
+  const levelStr = arb.generation_order.map(lvl => `[${lvl.join(',')}]`).join(' → ');
   document.getElementById('animInfo').textContent =
-    `Rank ${arb.rank} — generation order: [${arb.generation_order.join(' → ')}]`;
-  document.getElementById('stepInfo').textContent = `Step 0 / ${arb.generation_order.length}`;
-  renderBlocks([]);
+    `Rank ${arb.rank} — levels: ${levelStr}`;
+  document.getElementById('stepInfo').textContent = `Level 0 / ${arb.generation_order.length}`;
+  renderBlocks(new Set(), new Set());
   renderOrder(-1);
 }
 
@@ -413,44 +414,46 @@ function renderLtr() {
 
 // ── Block display ──────────────────────────────────────────────────────────
 
-function renderBlocks(revealedUpTo) {
-  // revealedUpTo: set of block indices that have been revealed so far
-  // last item in revealedUpTo is "just revealed"
+function renderBlocks(revealedSet, justRevealedSet) {
+  // revealedSet: Set of all block indices revealed so far
+  // justRevealedSet: Set of block indices revealed in the current level (for glow)
   const display = document.getElementById('blockDisplay');
   if (!current) { display.innerHTML = ''; return; }
-
-  const revealedSet = new Set(revealedUpTo);
-  const lastRevealed = revealedUpTo.length > 0 ? revealedUpTo[revealedUpTo.length - 1] : -1;
 
   display.innerHTML = current.block_labels.map((label, i) => {
     let cls = 'masked';
     if (revealedSet.has(i)) {
-      cls = i === lastRevealed ? 'just-revealed' : 'revealed';
+      cls = justRevealedSet && justRevealedSet.has(i) ? 'just-revealed' : 'revealed';
     }
-    const display_label = label.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    return `<span class="block-pill ${cls}">${cls === 'masked' ? '&nbsp;???&nbsp;' : display_label}</span>`;
+    const safe = label.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    return `<span class="block-pill ${cls}">${cls === 'masked' ? '&nbsp;???&nbsp;' : safe}</span>`;
   }).join('');
 
-  // After a short delay, downgrade just-revealed to revealed
-  if (lastRevealed !== -1) {
+  if (justRevealedSet && justRevealedSet.size > 0) {
     setTimeout(() => {
-      const pills = display.querySelectorAll('.block-pill.just-revealed');
-      pills.forEach(p => { p.classList.remove('just-revealed'); p.classList.add('revealed'); });
+      display.querySelectorAll('.block-pill.just-revealed').forEach(p => {
+        p.classList.remove('just-revealed');
+        p.classList.add('revealed');
+      });
     }, 500);
   }
 }
 
-function renderOrder(currentStepIdx) {
+function renderOrder(currentLevelIdx) {
   const display = document.getElementById('orderDisplay');
   if (currentArbIdx < 0 || !current) { display.innerHTML = ''; return; }
 
+  // generation_order is list of levels: [[2], [0,1], [3]]
   const order = current.arborescences[currentArbIdx].generation_order;
-  display.innerHTML = order.map((blockIdx, stepIdx) => {
+  display.innerHTML = order.map((level, lvlIdx) => {
     let cls = '';
-    if (stepIdx < currentStepIdx) cls = 'done';
-    else if (stepIdx === currentStepIdx) cls = 'current';
-    const label = (current.block_labels[blockIdx] || '').trim().slice(0, 12);
-    return `<span class="order-step ${cls}" title="block ${blockIdx}">#${blockIdx}: ${label}</span>`;
+    if (lvlIdx < currentLevelIdx) cls = 'done';
+    else if (lvlIdx === currentLevelIdx) cls = 'current';
+    const blockTags = level.map(blockIdx => {
+      const label = (current.block_labels[blockIdx] || '').trim().slice(0, 10);
+      return `#${blockIdx}:${label}`;
+    }).join(' ‖ ');
+    return `<span class="order-step ${cls}" title="level ${lvlIdx}">${blockTags}</span>`;
   }).join(' → ');
 }
 
@@ -465,10 +468,7 @@ function play() {
   document.getElementById('btnPause').disabled = false;
 
   animTimer = setInterval(() => {
-    if (animStep >= arb.generation_order.length) {
-      pause();
-      return;
-    }
+    if (animStep >= arb.generation_order.length) { pause(); return; }
     step();
   }, animInterval);
 }
@@ -489,8 +489,8 @@ function resetAnim() {
   stopAnim();
   if (currentArbIdx >= 0 && current) {
     const arb = current.arborescences[currentArbIdx];
-    document.getElementById('stepInfo').textContent = `Step 0 / ${arb.generation_order.length}`;
-    renderBlocks([]);
+    document.getElementById('stepInfo').textContent = `Level 0 / ${arb.generation_order.length}`;
+    renderBlocks(new Set(), new Set());
     renderOrder(-1);
   }
 }
@@ -500,16 +500,24 @@ function step() {
   const arb = current.arborescences[currentArbIdx];
   if (animStep >= arb.generation_order.length) return;
 
+  const currentLevel = arb.generation_order[animStep];  // e.g. [0, 2]
   animStep++;
-  const revealed = arb.generation_order.slice(0, animStep);
-  renderBlocks(revealed);
+
+  // build cumulative revealed set and just-revealed set
+  const revealedSet = new Set(arb.generation_order.slice(0, animStep).flat());
+  const justRevealedSet = new Set(currentLevel);
+
+  renderBlocks(revealedSet, justRevealedSet);
   renderOrder(animStep - 1);
+
+  const levelStr = currentLevel.join(', ');
   document.getElementById('stepInfo').textContent =
-    `Step ${animStep} / ${arb.generation_order.length} — revealed block ${arb.generation_order[animStep-1]}`;
+    `Level ${animStep} / ${arb.generation_order.length} — revealed blocks [${levelStr}]`;
 
   if (animStep >= arb.generation_order.length) {
     pause();
-    document.getElementById('stepInfo').textContent = `Complete (${arb.generation_order.length} blocks)`;
+    document.getElementById('stepInfo').textContent =
+      `Complete — ${arb.generation_order.length} levels`;
   }
 }
 
