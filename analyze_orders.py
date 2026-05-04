@@ -280,12 +280,18 @@ def analyze_one(text_idx, text, blk_sz):
 
 def main():
     results = []
-    for text_idx in TEXT_INDICES:
-        text = ds["train"][text_idx]["text"]
-        print(f"\n=== Text {text_idx}: {text[:80]}... ===")
-        for blk_sz in BLOCK_SIZES:
-            data = analyze_one(text_idx, text, blk_sz)
-            results.append(data)
+    # for text_idx in TEXT_INDICES:
+    #     text = ds["train"][text_idx]["text"]
+    #     print(f"\n=== Text {text_idx}: {text[:80]}... ===")
+    #     for blk_sz in BLOCK_SIZES:
+    #         data = analyze_one(text_idx, text, blk_sz)
+    #         results.append(data)
+    text_idx=0
+    text = ds["train"][text_idx]["text"]
+    print(f"\n=== Text {text_idx}: {text[:80]}... ===")
+    for blk_sz in BLOCK_SIZES:
+        data = analyze_one(text_idx, text, blk_sz)
+        results.append(data)
 
     os.makedirs("static", exist_ok=True)
     with open("static/results.json", "w") as f:
