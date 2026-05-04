@@ -250,6 +250,7 @@
         <th>Remember Likelihood</th>
         <th>Depth</th>
         <th>TED from LTR</th>
+        <th>Seq Edit Dist from LTR</th>
         <th>Animate</th>
       </tr>
     </thead>
@@ -375,6 +376,7 @@ function renderTable() {
       <td class="${arb.remember_likelihood >= 0 ? 'val-pos' : 'val-neg'}">${arb.remember_likelihood.toFixed(2)}</td>
       <td>${arb.depth}</td>
       <td>${arb.ted_from_ltr}</td>
+      <td>${arb.seq_edit_dist_from_ltr}</td>
       <td><button class="btn-animate" id="btn-${idx}" onclick="selectArb(${idx})">Animate</button></td>
     `;
     tbody.appendChild(tr);

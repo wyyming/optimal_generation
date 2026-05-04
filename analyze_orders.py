@@ -2,6 +2,7 @@ import torch
 from transformers import AutoTokenizer, AutoModel
 import networkx as nx
 from collections import defaultdict
+from itertools import permutations, product
 import os
 import json
 import heapq
@@ -204,6 +205,54 @@ def unordered_ted(T1, T2):
     return int(round(ted(-1, -1)))
 
 
+_SEQ_EDIT_PERM_CAP = 40320  # 8!
+
+
+def _levenshtein(s1, s2):
+    m, n = len(s1), len(s2)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev, dp[0] = dp[0], i
+        for j in range(1, n + 1):
+            temp = dp[j]
+            dp[j] = prev if s1[i - 1] == s2[j - 1] else 1 + min(prev, dp[j], dp[j - 1])
+            prev = temp
+    return dp[n]
+
+
+def seq_edit_dist_from_ltr(tree, num_blocks):
+    """
+    Minimum Levenshtein distance between any valid flattening of the tree's
+    generation order and the LTR sequence [0, 1, ..., num_blocks-1].
+    Within each depth level the children are unordered, so we try all
+    permutations of each level.  If the total permutation count exceeds
+    _SEQ_EDIT_PERM_CAP we fall back to sorted order for the offending levels.
+    """
+    ltr = list(range(num_blocks))
+    levels = get_generation_order(tree)  # list of lists, one per depth level
+
+    # Build per-level permutation lists; cap oversized levels at sorted order.
+    total_perms = 1
+    level_choices = []
+    for level in levels:
+        if total_perms * len(level) > _SEQ_EDIT_PERM_CAP:
+            # This level would blow the cap — fix it to sorted order.
+            level_choices.append([tuple(sorted(level))])
+        else:
+            perms = list(permutations(level))
+            level_choices.append(perms)
+            total_perms *= len(perms)
+
+    min_dist = float('inf')
+    for combo in product(*level_choices):
+        seq = [b for level_perm in combo for b in level_perm]
+        dist = _levenshtein(seq, ltr)
+        if dist < min_dist:
+            min_dist = dist
+
+    return min_dist
+
+
 def tree_to_dict(tree, blocks, tokenizer, targets_main, node=-1):
     info = {'id': node, 'label': 'start' if node == -1 else
             ''.join(tokenizer.decode(targets_main[ind]) for ind in blocks[node])}
@@ -251,6 +300,7 @@ def analyze_one(text_idx, text, blk_sz):
         depths = nx.single_source_shortest_path_length(tree, source=-1)
         depth = max(depths.values())
         ted = unordered_ted(tree, ltr_tree)
+        sed = seq_edit_dist_from_ltr(tree, num_blocks)
         order = get_generation_order(tree)
         arborescences.append({
             'rank': rank + 1,
@@ -258,6 +308,7 @@ def analyze_one(text_idx, text, blk_sz):
             'remember_likelihood': round(rmb, 4),
             'depth': depth,
             'ted_from_ltr': ted,
+            'seq_edit_dist_from_ltr': sed,
             'generation_order': order,
             'tree': tree_to_dict(tree, blocks, tokenizer, targets_main),
         })
